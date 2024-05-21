@@ -7,7 +7,9 @@ from poly_div import poly_div
 
 d = 1 # plant delay
 A = [1, -1.2254, 0.5711, -0.3507, 0.005]
+A = [1, -0.8]
 B = [0.0281, 0.1278, 0.0513, 0.0013]
+B = [0.4, 0.6]
 
 plant_tf = tf(A, B, dt=True)
 delay_poly = np.zeros(d + 1)
@@ -19,7 +21,7 @@ pzmap(plant_tf*delay_tf)
 
 
 
-C = [1, 0.9]
+C = [1]
 D = [1, -1]
 
 
@@ -74,26 +76,48 @@ l[3] = 0
 
 
 
+N = 3
+
+# N1 = start prediction
+# N2 = end prediction
+
+h_i[:] = d+1
+h_p[:] = d+N
+h_c[:] = N
 
 
 
 def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
-    E_, F_ = deconv_n(C, np.polymul(A, D), d)
+    #E_, F_ = deconv_n(C, np.polymul(A, D), d)
     #F_ = F_[d:]
-    E, F = poly_div(C, np.polymul(A, D), d)
+    E_ges = []
+    F_ges = []
+    G_ges = []
+    H_ges = []
 
-    print(f"E: {E}")
-    print(f"F: {F}")
+    for i in range(0, h_c):
+        E, F = poly_div(C, np.polymul(A, D), i + 1)
+        E_ges.append(E)
+        F_ges.append(F)
 
-    psi_size = h_p - d
+        G, H = poly_div(np.polymul(B, E), C, i + d + 1)
+        G_ges.append(G)
+        H_ges.append(H)
+
+        pass
+
+    print (f"E_ges: {E_ges}")
+    print (f"F_ges: {F_ges}")
+    print (f"G_ges: {G_ges}")
+    print (f"H_ges: {H_ges}")
+
+
+    psi_size = h_c
     psi = np.zeros((psi_size, psi_size))
 
-    # j = [d+1 : h_p]
-    for i in range(0, h_p - d): 
-        G_m, H_m = poly_div(np.polymul(B, E), C, i + d + 1)
-        print(f"G_m @ j={i + d + 1}: {G_m}")
+    for i in range(0, psi_size): 
 
-        psi[i, 0:i+1] = G_m[i::-1]
+        psi[i, 0:i+1] = G_ges[i][i::-1]
     
     print(f"psi: {psi}")
 
