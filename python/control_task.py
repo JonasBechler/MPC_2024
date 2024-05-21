@@ -84,6 +84,7 @@ N = 3
 h_i[:] = d+1
 h_p[:] = d+N
 h_c[:] = N
+l[:] = 0.8
 
 
 
@@ -122,11 +123,11 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
     print(f"psi: {psi}")
 
     psi_t = np.transpose(psi)
-    gamma = np.linalg.inv(np.matmul(psi_t, psi) + l * np.eye(psi_size)) * psi_t
+    gamma = np.matmul(np.linalg.inv(np.matmul(psi_t, psi) + l * np.eye(psi_size)), psi_t)
     gamma = gamma[0, :]
 
     R = np.polymul(gamma, F)
-    S = np.polymul(D, np.polyadd(C, np.polymul(gamma, H_m)))
+    S = np.polymul(D, np.polyadd(C, np.polymul(gamma, H_ges[0])))
     T = np.polymul(C, gamma)
 
     print(f"R: {R}")
