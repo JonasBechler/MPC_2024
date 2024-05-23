@@ -126,9 +126,23 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
     gamma = np.matmul(np.linalg.inv(np.matmul(psi_t, psi) + l * np.eye(psi_size)), psi_t)
     gamma = gamma[0, :]
 
-    R = np.polymul(gamma, F)
-    S = np.polymul(D, np.polyadd(C, np.polymul(gamma, H_ges[0])))
-    T = np.polymul(C, gamma)
+    R = []
+    for i in range(0, h_c):
+        R = np.polyadd(R, np.polymul(gamma[i], F_ges[i]))
+
+    S = []
+    for i in range(0, h_c):
+        S = np.polyadd(S, np.polymul(gamma[i], H_ges[i]))
+    S = np.append(S, 0)
+    S = np.polymul(D, np.polyadd(C, S))
+    
+    T = []
+    for i in range(0, h_c):
+        T = np.polyadd(T, gamma[i])
+    T = np.polymul(C, T)
+
+    #R = np.polymul(gamma, F)
+    #S = np.polymul(D, np.polyadd(C, np.polymul(gamma, H_ges[0])))
 
     print(f"R: {R}")
     print(f"S: {S}")
@@ -136,27 +150,36 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
 
     return R, S, T
 
-def calculate_tf(R, S, T, plant_tf, delay_tf):
-    T_tf = tf(T, 1, dt=True)
-    S_tf = tf(1, S, dt=True)
-    R_tf = tf(R, 1, dt=True)
+def calculate_tf(A, B, R, S, T, plant_tf, delay_tf):
 
-    p_c = 1 + 1/S_tf * delay_tf * plant_tf * R_tf
+    p_c = 1 + tf(R, S, dt=True) * delay_tf * plant_tf
 
-    Sensitivity_tf = tf(np.polymul(A, S), 1, dt=True) / p_c
-    ComplementarySensitivity_tf = tf(np.polymul(B, R), 1, dt=True) / p_c
-    SensitivityController_tf = Sensitivity_tf * R_tf / S_tf
-    SensitivityPlant_tf = Sensitivity_tf * plant_tf
+    y_ys = tf(np.polymul(B, T), 1, dt=True) / p_c
+    y_vy = tf(np.polymul(A, S), 1, dt=True) / p_c               # Sensitivity function
+    y_vu = tf(np.polymul(B, S), 1, dt=True) * delay_tf / p_c    # Sensitivity function x System
+    y_n  = tf(np.polymul(B, R), 1, dt=True) * delay_tf / p_c    # Complementary sensitivity function
 
-    return Sensitivity_tf, ComplementarySensitivity_tf, SensitivityController_tf, SensitivityPlant_tf
+    u_ys = tf(np.polymul(A, T), 1, dt=True) / p_c
+    u_vy = - tf(np.polymul(A, R), 1, dt=True) / p_c             # Sensitivity function x Controller
+    u_vu = tf(np.polymul(A, S), 1, dt=True) / p_c               # Sensitivity function
+    u_n  = - tf(np.polymul(A, R), 1, dt=True) / p_c             # Sensitivity function x Controller
+
+    return {y_ys, y_vy, y_vu, y_n}, {u_ys, u_vy, u_vu, u_n}
 
 plt.figure("Comparison of properties")
-for i in range(4):
+for i in range(1):
     [R, S, T] = compute_RST(d, A, B, C, D, h_i[i], h_c[i], h_p[i], l[i])
-    [Sensitivity_tf, ComplementarySensitivity_tf, SensitivityController_tf, SensitivityPlant_tf] = calculate_tf(R, S, T, plant_tf, delay_tf)
+    [y_tf, u_tf] = calculate_tf(A, B, R, S, T, plant_tf, delay_tf)
 
+    [y_ys, y_vy, y_vu, y_n] = y_tf
+    [u_ys, u_vy, u_vu, u_n] = u_tf
+
+
+
+    
+    
     plt.subplot(4, 4, i+1)
-    [poles, zeros] = pzmap(Sensitivity_tf, plot=False)
+    [poles, zeros] = pzmap(y_ys, plot=False)
     plt.plot(np.real(zeros), np.imag(zeros), 'bo')
     plt.plot(np.real(poles), np.imag(poles), 'rx')
     plt.grid()
@@ -165,6 +188,15 @@ for i in range(4):
     plt.ylabel("Im")
     plt.plot(np.cos(np.linspace(0, 2*np.pi, 100)), np.sin(np.linspace(0, 2*np.pi, 100)), '-')
     plt.legend(["Poles", "Zeros"])
+
+    plt.subplot(4, 4, i+5)
+    [y, t] = step(y_ys)
+    plt.plot(t, y)
+    plt.grid()
+    plt.title("Step response")
+    plt.xlabel("Time")
+    plt.ylabel("Amplitude")
+    
 
 plt.tight_layout()
 plt.show()
