@@ -97,11 +97,11 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
     H_ges = []
 
     for i in range(0, h_c):
-        E, F = poly_div(C, np.polymul(A, D), i + 1)
+        E, F = poly_div(C, np.polymul(A, D), i + 1 )
         E_ges.append(E)
         F_ges.append(F)
 
-        G, H = poly_div(np.polymul(B, E), C, i + d + 1)
+        G, H = poly_div(np.polymul(B, E), C, i + 1 )
         G_ges.append(G)
         H_ges.append(H)
 
@@ -126,20 +126,32 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
     gamma = np.matmul(np.linalg.inv(np.matmul(psi_t, psi) + l * np.eye(psi_size)), psi_t)
     gamma = gamma[0, :]
 
+    # R * y + S * u = T * y_s
+    # see https://www.mathworks.com/help/sps/ref/rstcontroller.html#d126e252765
+
+    # h_c = h_p - h_i
+    # R = sum(j = [0, ..., h_c])(gamma_j * F_j)
+    # correct as is
+    # plus q^-j?
     R = []
     for i in range(0, h_c):
         R = np.polyadd(R, np.polymul(gamma[i], F_ges[i]))
 
+
+
+    # is it q^-1 or q^-j?
+    # S = D * { C + sum(j = [0, ..., h_c])(gamma_j * H_j-d) * q^-1?}
     S = []
     for i in range(0, h_c):
         S = np.polyadd(S, np.polymul(gamma[i], H_ges[i]))
     S = np.append(S, 0)
     S = np.polymul(D, np.polyadd(C, S))
     
+    # T = C * sum(j = [0, ..., h_c])(gamma_j * q^-j)
+    # T = C * gamma
+    # correct as is
     T = []
-    for i in range(0, h_c):
-        T = np.polyadd(T, gamma[i])
-    T = np.polymul(C, T)
+    T = np.polymul(C, gamma)
 
     #R = np.polymul(gamma, F)
     #S = np.polymul(D, np.polyadd(C, np.polymul(gamma, H_ges[0])))
@@ -183,35 +195,36 @@ for i in range(1):
     plt.plot(np.real(zeros), np.imag(zeros), 'bo')
     plt.plot(np.real(poles), np.imag(poles), 'rx')
     plt.grid()
-    plt.title(f"Property {i+1}")
+    plt.title(f"y/ys Property {i+1}")
     plt.xlabel("Re")
     plt.ylabel("Im")
     plt.plot(np.cos(np.linspace(0, 2*np.pi, 100)), np.sin(np.linspace(0, 2*np.pi, 100)), '-')
     plt.legend(["Poles", "Zeros"])
 
-    plt.subplot(4, 4, i+5)
-    [y, t] = step(y_ys)
-    plt.plot(t, y)
+    plt.subplot(4, 4, i+2)
+    [poles, zeros] = pzmap(y_vy, plot=False)
+    plt.plot(np.real(zeros), np.imag(zeros), 'bo')
+    plt.plot(np.real(poles), np.imag(poles), 'rx')
     plt.grid()
-    plt.title("Step response")
-    plt.xlabel("Time")
-    plt.ylabel("Amplitude")
+    plt.title(f"y/vy Property {i+1}")
+    plt.xlabel("Re")
+    plt.ylabel("Im")
+    plt.plot(np.cos(np.linspace(0, 2*np.pi, 100)), np.sin(np.linspace(0, 2*np.pi, 100)), '-')
+    plt.legend(["Poles", "Zeros"])
+
+    # plt.subplot(4, 4, i+5)
+    # [y, t] = step(y_ys)
+    # plt.plot(t, y)
+    # plt.grid()
+    # plt.title("Step response")
+    # plt.xlabel("Time")
+    # plt.ylabel("Amplitude")
     
 
 plt.tight_layout()
 plt.show()
 
 
-
-plt.subplot(2, 2, 2)
-pzmap(ComplementarySensitivity_tf)
-
-plt.subplot(2, 2, 3)
-pzmap(SensitivityController_tf)
-
-plt.subplot(2, 2, 4)
-pzmap(SensitivityPlant_tf)
-plt.show()
 pass
 
 
