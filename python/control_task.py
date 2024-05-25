@@ -5,23 +5,40 @@ from control.matlab import *
 from deconv_n import deconv_n
 from poly_div import poly_div
 
-d = 1 # plant delay
-A = [1, -1.2254, 0.5711, -0.3507, 0.005]
-A = [1, -0.8]
+d = 0 # plant delay
 B = [0.0281, 0.1278, 0.0513, 0.0013]
 B = [0.4, 0.6]
+A = [1, -1.2254, 0.5711, -0.3507, 0.005]
+A = [1, -0.8]
 
-plant_tf = tf(A, B, dt=True)
-delay_poly = np.zeros(d + 1)
-delay_poly[0] = 1
-z = tf('z')
-delay_tf = z**-d
-pzmap(plant_tf*delay_tf)
+plt.figure("Plant")
+plt.subplot(2, 1, 1)
+plant_tf = tf(B, np.append(A, np.zeros(d+1)), dt=True)
+[poles, zeros] = pzmap(plant_tf, plot=False)
+plt.plot(np.real(zeros), np.imag(zeros), 'bo')
+plt.plot(np.real(poles), np.imag(poles), 'rx')
+plt.grid()
+plt.title(f"Plant Poles and Zeros")
+plt.xlabel("Re")
+plt.ylabel("Im")
+plt.plot(np.cos(np.linspace(0, 2*np.pi, 100)), np.sin(np.linspace(0, 2*np.pi, 100)), '-')
+
+
+plt.subplot(2, 1, 2)
+[y, t] = step(plant_tf, T=20)
+plt.plot(t, y)
+plt.grid()
+plt.title("Step response")
+plt.xlabel("Time")
+plt.ylabel("Amplitude")
+plt.tight_layout()
+#plt.show()
 
 
 
 
-C = [1]
+
+C = [1, 0]
 D = [1, -1]
 
 
@@ -58,7 +75,7 @@ l[1] = 1 # not 0
 # h_i = order(B) + plant_delay + 1
 # h_p > h_i + h_c
 # l = 0
-h_i[2] = len(B) + d
+h_i[2] = len(B) + d -1
 h_c[2] = len(A) + len(D) - 2
 h_p[2] = h_i[2] + h_c[2] + 1 
 l[2] = 0
@@ -77,14 +94,15 @@ l[3] = 0
 
 
 N = 3
+d = 0
 
 # N1 = start prediction
 # N2 = end prediction
 
-h_i[:] = d+1
-h_p[:] = d+N
-h_c[:] = N
-l[:] = 0.8
+h_i[0] = d
+h_p[0] = d+N
+h_c[0] = N
+l[0] = 0.8
 
 
 
@@ -96,12 +114,12 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
     G_ges = []
     H_ges = []
 
-    for i in range(0, h_c):
-        E, F = poly_div(C, np.polymul(A, D), i + 1 )
+    for i in range(h_i, h_p):
+        E, F = poly_div(C, np.polymul(A, D), i + 1)
         E_ges.append(E)
         F_ges.append(F)
 
-        G, H = poly_div(np.polymul(B, E), C, i + 1 )
+        G, H = poly_div(np.polymul(B, E), C, i + 1)
         G_ges.append(G)
         H_ges.append(H)
 
@@ -116,15 +134,41 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
     psi_size = h_c
     psi = np.zeros((psi_size, psi_size))
 
-    for i in range(0, psi_size): 
-
-        psi[i, 0:i+1] = G_ges[i][i::-1]
+    # for i in range(0, psi_size): 
+    #     psi[i, 0:i+1] = G_ges[i][i::-1]
     
-    print(f"psi: {psi}")
+
+    # psi:
+    # [g_0_0,       0,      0,      0]
+    # [g_1_1,   g_1_0,      0,      0]
+    # [g_2_2,   g_2_1,  g_2_0,      0]
+    # [g_3_3,   g_3_2,  g_3_1,  g_3_0]
+
+
+
+
+
+
+    for i in range(h_i, h_p):
+        print(f"i: {i}")
+        print("psi[i-h_i, 0:min(i+1, h_c)]")
+        print(f"= psi[{i}-{h_i}, 0:min({i}+1, {h_c})]")
+        print("= " + str(psi[i-h_i, 0:min(i+1, h_c)]))
+
+        print("np.flip(G_ges[i-h_i][max(0, i - h_c + 1):i+1])")
+        print(f"np.flip(G_ges[{i}-{h_i}][max(0, {i} - {h_c} + 1):{i}+1])")
+        print("= " + str(np.flip(G_ges[i-h_i][max(0, i - h_c + 1):i+1])))
+
+        psi[i-h_i, 0:min(i+1, h_c)] = np.flip(G_ges[i-h_i][max(0, i - h_c + 1):i+1])
+
+
+    print(f"psi:\n{psi}")
 
     psi_t = np.transpose(psi)
     gamma = np.matmul(np.linalg.inv(np.matmul(psi_t, psi) + l * np.eye(psi_size)), psi_t)
     gamma = gamma[0, :]
+
+    print(f"gamma: {gamma}")
 
     # R * y + S * u = T * y_s
     # see https://www.mathworks.com/help/sps/ref/rstcontroller.html#d126e252765
@@ -162,26 +206,34 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
 
     return R, S, T
 
-def calculate_tf(A, B, R, S, T, plant_tf, delay_tf):
+def calculate_tf(d, A, B, R, S, T):
+    # p_c = A * S + B * R * q^(-d-1)
+    # p_c = np.polyadd(np.append(np.polymul(A, S), np.zeros(d+1)), np.polymul(B, R))
+    #p_c = np.polyadd(np.append(np.polymul(np.polymul(A, S), D), np.zeros(d+1)), np.polymul(B, R))
+    #p_c = np.polyadd(np.polymul(A, S), np.append(np.polymul(B, R), np.zeros(d+1)))
+    #p_c = np.polyadd(np.append(np.polymul(A, S), np.zeros(d+1)), np.polymul(B, R))
+    #p_c = np.polyadd(np.polymul(np.polymul(A, S), D), np.append(np.polymul(B, R), np.zeros(d+1)))
+    p_c = np.polyadd(np.polymul(A, S), np.append(np.polymul(B, R), np.zeros(d+1)))
 
-    p_c = 1 + tf(R, S, dt=True) * delay_tf * plant_tf
 
-    y_ys = tf(np.polymul(B, T), 1, dt=True) / p_c
-    y_vy = tf(np.polymul(A, S), 1, dt=True) / p_c               # Sensitivity function
-    y_vu = tf(np.polymul(B, S), 1, dt=True) * delay_tf / p_c    # Sensitivity function x System
-    y_n  = tf(np.polymul(B, R), 1, dt=True) * delay_tf / p_c    # Complementary sensitivity function
+    #y_ys = tf(np.append(np.polymul(B, T), np.zeros(d+1)), p_c, dt=True)
+    #y_ys = tf(np.polymul(B, T), np.append(p_c, np.zeros(d+1)), dt=True)
+    y_ys = tf(np.polymul(B, T), p_c, dt=True)
+    y_vy = tf(np.polymul(A, S), p_c, dt=True)                               # Sensitivity function
+    y_vu = tf(np.append(np.polymul(B, S), np.zeros(d+1)), p_c, dt=True)     # Sensitivity function x System
+    y_n  = tf(np.append(np.polymul(B, R), np.zeros(d+1)), p_c, dt=True)     # Complementary sensitivity function
 
-    u_ys = tf(np.polymul(A, T), 1, dt=True) / p_c
-    u_vy = - tf(np.polymul(A, R), 1, dt=True) / p_c             # Sensitivity function x Controller
-    u_vu = tf(np.polymul(A, S), 1, dt=True) / p_c               # Sensitivity function
-    u_n  = - tf(np.polymul(A, R), 1, dt=True) / p_c             # Sensitivity function x Controller
+    u_ys =   tf(np.polymul(A, T), p_c, dt=True)
+    u_vy = - tf(np.polymul(A, R), p_c, dt=True)                         # Sensitivity function x Controller
+    u_vu =   tf(np.polymul(A, S), p_c, dt=True)                           # Sensitivity function
+    u_n  = - tf(np.polymul(A, R), p_c, dt=True)                         # Sensitivity function x Controller
 
     return {y_ys, y_vy, y_vu, y_n}, {u_ys, u_vy, u_vu, u_n}
 
 plt.figure("Comparison of properties")
-for i in range(1):
+for i in range(0, 1):
     [R, S, T] = compute_RST(d, A, B, C, D, h_i[i], h_c[i], h_p[i], l[i])
-    [y_tf, u_tf] = calculate_tf(A, B, R, S, T, plant_tf, delay_tf)
+    [y_tf, u_tf] = calculate_tf(d, A, B, R, S, T)
 
     [y_ys, y_vy, y_vu, y_n] = y_tf
     [u_ys, u_vy, u_vu, u_n] = u_tf
@@ -199,30 +251,20 @@ for i in range(1):
     plt.xlabel("Re")
     plt.ylabel("Im")
     plt.plot(np.cos(np.linspace(0, 2*np.pi, 100)), np.sin(np.linspace(0, 2*np.pi, 100)), '-')
-    plt.legend(["Poles", "Zeros"])
 
-    plt.subplot(4, 4, i+2)
-    [poles, zeros] = pzmap(y_vy, plot=False)
-    plt.plot(np.real(zeros), np.imag(zeros), 'bo')
-    plt.plot(np.real(poles), np.imag(poles), 'rx')
-    plt.grid()
-    plt.title(f"y/vy Property {i+1}")
-    plt.xlabel("Re")
-    plt.ylabel("Im")
-    plt.plot(np.cos(np.linspace(0, 2*np.pi, 100)), np.sin(np.linspace(0, 2*np.pi, 100)), '-')
-    plt.legend(["Poles", "Zeros"])
-
-    # plt.subplot(4, 4, i+5)
-    # [y, t] = step(y_ys)
-    # plt.plot(t, y)
-    # plt.grid()
-    # plt.title("Step response")
-    # plt.xlabel("Time")
-    # plt.ylabel("Amplitude")
+    try:
+        plt.subplot(4, 4, i+5)
+        plt.grid()
+        plt.title("Step response")
+        plt.xlabel("Time")
+        plt.ylabel("Amplitude")
+        [y, t] = step(y_ys, T=25)
+        plt.plot(t, y)
+    except:
+        pass
     
-
-plt.tight_layout()
 plt.show()
+
 
 
 pass
