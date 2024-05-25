@@ -11,26 +11,22 @@ B = [0.4, 0.6]
 A = [1, -1.2254, 0.5711, -0.3507, 0.005]
 A = [1, -0.8]
 
-plt.figure("Plant")
-plt.subplot(2, 1, 1)
+plt.figure("Model Predictive Control")
+plt.subplot(4, 5, 1)
 plant_tf = tf(B, np.append(A, np.zeros(d+1)), dt=True)
 [poles, zeros] = pzmap(plant_tf, plot=False)
 plt.plot(np.real(zeros), np.imag(zeros), 'bo')
 plt.plot(np.real(poles), np.imag(poles), 'rx')
 plt.grid()
 plt.title(f"Plant Poles and Zeros")
-plt.xlabel("Re")
-plt.ylabel("Im")
 plt.plot(np.cos(np.linspace(0, 2*np.pi, 100)), np.sin(np.linspace(0, 2*np.pi, 100)), '-')
 
 
-plt.subplot(2, 1, 2)
-[y, t] = step(plant_tf, T=20)
+plt.subplot(4, 5, 5+1)
+[y, t] = step(plant_tf, T=12)
 plt.plot(t, y)
 plt.grid()
 plt.title("Step response")
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
 plt.tight_layout()
 #plt.show()
 
@@ -38,7 +34,7 @@ plt.tight_layout()
 
 
 
-C = [1, 0]
+C = [1]
 D = [1, -1]
 
 
@@ -94,7 +90,6 @@ l[3] = 0
 
 
 N = 3
-d = 0
 
 # N1 = start prediction
 # N2 = end prediction
@@ -185,11 +180,18 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
 
     # is it q^-1 or q^-j?
     # S = D * { C + sum(j = [0, ..., h_c])(gamma_j * H_j-d) * q^-1?}
-    S = []
+    #   = D * C + D * sum(j = [0, ..., h_c])(gamma_j * H_j-d) * q^-1?
+    #   = S1 + S2
+
+    S1 = np.flip(np.polymul(D, C))
+    S2 = []
     for i in range(0, h_c):
-        S = np.polyadd(S, np.polymul(gamma[i], H_ges[i]))
-    S = np.append(S, 0)
-    S = np.polymul(D, np.polyadd(C, S))
+        S2 = np.polyadd(S2, np.polymul(gamma[i], H_ges[i]))
+    S2 = np.polymul(D, S2)
+    S2 = np.flip(np.append(0, S2))
+
+    #S = np.polymul(D, np.polyadd(np.append(C, 0), S))
+    S = np.flip(np.polyadd(S1, S2))
     
     # T = C * sum(j = [0, ..., h_c])(gamma_j * q^-j)
     # T = C * gamma
@@ -208,15 +210,20 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
 
 def calculate_tf(d, A, B, R, S, T):
     # p_c = A * S + B * R * q^(-d-1)
-    # p_c = np.polyadd(np.append(np.polymul(A, S), np.zeros(d+1)), np.polymul(B, R))
+    p_c = np.polyadd(np.append(np.polymul(A, S), np.zeros(d+1)), np.polymul(B, R))
     #p_c = np.polyadd(np.append(np.polymul(np.polymul(A, S), D), np.zeros(d+1)), np.polymul(B, R))
     #p_c = np.polyadd(np.polymul(A, S), np.append(np.polymul(B, R), np.zeros(d+1)))
     #p_c = np.polyadd(np.append(np.polymul(A, S), np.zeros(d+1)), np.polymul(B, R))
     #p_c = np.polyadd(np.polymul(np.polymul(A, S), D), np.append(np.polymul(B, R), np.zeros(d+1)))
-    p_c = np.polyadd(np.polymul(A, S), np.append(np.polymul(B, R), np.zeros(d+1)))
+    #p_c = np.polyadd(np.polymul(A, S), np.append(np.polymul(B, R), np.zeros(d+1)))
+
+    p_c1 = np.flip(np.polymul(A, S))
+    p_c2 = np.flip(np.append(np.zeros(d+1), np.polymul(B, R)))
+    p_c = np.flip(np.polyadd(p_c1, p_c2))
+    
 
 
-    #y_ys = tf(np.append(np.polymul(B, T), np.zeros(d+1)), p_c, dt=True)
+    y_ys = tf(np.append(np.polymul(B, T), np.zeros(d+1)), p_c, dt=True)
     #y_ys = tf(np.polymul(B, T), np.append(p_c, np.zeros(d+1)), dt=True)
     y_ys = tf(np.polymul(B, T), p_c, dt=True)
     y_vy = tf(np.polymul(A, S), p_c, dt=True)                               # Sensitivity function
@@ -224,44 +231,51 @@ def calculate_tf(d, A, B, R, S, T):
     y_n  = tf(np.append(np.polymul(B, R), np.zeros(d+1)), p_c, dt=True)     # Complementary sensitivity function
 
     u_ys =   tf(np.polymul(A, T), p_c, dt=True)
+    u_ys =   tf(np.polymul(A, T), np.append(p_c, np.zeros(d+1)), dt=True)
+    #u_ys =   tf(np.append(np.polymul(A, T), np.zeros(d+2)), p_c,  dt=True)
     u_vy = - tf(np.polymul(A, R), p_c, dt=True)                         # Sensitivity function x Controller
     u_vu =   tf(np.polymul(A, S), p_c, dt=True)                           # Sensitivity function
     u_n  = - tf(np.polymul(A, R), p_c, dt=True)                         # Sensitivity function x Controller
 
     return {y_ys, y_vy, y_vu, y_n}, {u_ys, u_vy, u_vu, u_n}
 
-plt.figure("Comparison of properties")
-for i in range(0, 1):
+#plt.figure("Comparison of properties")
+for i in range(0, 2):
     [R, S, T] = compute_RST(d, A, B, C, D, h_i[i], h_c[i], h_p[i], l[i])
     [y_tf, u_tf] = calculate_tf(d, A, B, R, S, T)
 
-    [y_ys, y_vy, y_vu, y_n] = y_tf
-    [u_ys, u_vy, u_vu, u_n] = u_tf
+    [y_ys_tf, y_vy_tf, y_vu_tf, y_n_tf] = y_tf
+    [u_ys_tf, u_vy_tf, u_vu_tf, u_n_tf] = u_tf
 
 
 
     
     
-    plt.subplot(4, 4, i+1)
-    [poles, zeros] = pzmap(y_ys, plot=False)
+    plt.subplot(4,5, i+2)
+    [poles, zeros] = pzmap(y_ys_tf, plot=False)
     plt.plot(np.real(zeros), np.imag(zeros), 'bo')
     plt.plot(np.real(poles), np.imag(poles), 'rx')
     plt.grid()
-    plt.title(f"y/ys Property {i+1}")
-    plt.xlabel("Re")
-    plt.ylabel("Im")
+    plt.title(f"Poles and Zeros Y/Y*")
+    
     plt.plot(np.cos(np.linspace(0, 2*np.pi, 100)), np.sin(np.linspace(0, 2*np.pi, 100)), '-')
 
     try:
-        plt.subplot(4, 4, i+5)
+        plt.subplot(4,5, i+2 +5)
         plt.grid()
-        plt.title("Step response")
+        plt.title("Step response Y/Y* and U/U*")
         plt.xlabel("Time")
         plt.ylabel("Amplitude")
-        [y, t] = step(y_ys, T=25)
-        plt.plot(t, y)
+        [y_ys, t] = step(y_ys_tf, T=12)
+        [u_ys, t] = step(u_ys_tf, T=12)
+        plt.plot(t, y_ys)
+        plt.plot(t, u_ys)
+        pass
     except:
         pass
+
+
+
     
 plt.show()
 
