@@ -179,8 +179,8 @@ def compute_RST(d, A, B, C, D, h_i, h_c, h_p, l):
 
 
     # is it q^-1 or q^-j?
-    # S = D * { C + sum(j = [0, ..., h_c])(gamma_j * H_j-d) * q^-1?}
-    #   = D * C + D * sum(j = [0, ..., h_c])(gamma_j * H_j-d) * q^-1?
+    # S = D * { C + sum(j = [0, ..., h_c])(gamma_j * H_j-d) * q^-1}
+    #   = D * C + D * sum(j = [0, ..., h_c])(gamma_j * H_j-d) * q^-1
     #   = S1 + S2
 
     S1 = np.flip(np.polymul(D, C))
@@ -217,21 +217,30 @@ def calculate_tf(d, A, B, R, S, T):
     #p_c = np.polyadd(np.polymul(np.polymul(A, S), D), np.append(np.polymul(B, R), np.zeros(d+1)))
     #p_c = np.polyadd(np.polymul(A, S), np.append(np.polymul(B, R), np.zeros(d+1)))
 
-    p_c1 = np.flip(np.polymul(A, S))
-    p_c2 = np.flip(np.append(np.zeros(d+1), np.polymul(B, R)))
-    p_c = np.flip(np.polyadd(p_c1, p_c2))
+    p_c1 = np.polymul(A, S)
+    p_c2 = np.append(np.zeros(d+1), np.polymul(B, R))
+    # make same length by appending zeros
+    if len(p_c1) > len(p_c2):
+        p_c2 = np.append(p_c2, np.zeros(len(p_c1) - len(p_c2)))
+    else:
+        p_c1 = np.append(p_c1, np.zeros(len(p_c2) - len(p_c1)))
+    
+    p_c = np.polyadd(p_c1, p_c2)
     
 
 
-    y_ys = tf(np.append(np.polymul(B, T), np.zeros(d+1)), p_c, dt=True)
-    #y_ys = tf(np.polymul(B, T), np.append(p_c, np.zeros(d+1)), dt=True)
+    
+    #y_ys = tf(np.append(np.zeros(d+1), np.polymul(B, T)), p_c, dt=True)
     y_ys = tf(np.polymul(B, T), p_c, dt=True)
+    y_ys = tf(np.polymul(B, T), np.append(p_c, np.zeros(d+1)), dt=True)
+
+    #y_ys = tf(np.polymul(B, T), p_c, dt=True)
     y_vy = tf(np.polymul(A, S), p_c, dt=True)                               # Sensitivity function
     y_vu = tf(np.append(np.polymul(B, S), np.zeros(d+1)), p_c, dt=True)     # Sensitivity function x System
     y_n  = tf(np.append(np.polymul(B, R), np.zeros(d+1)), p_c, dt=True)     # Complementary sensitivity function
 
-    u_ys =   tf(np.polymul(A, T), p_c, dt=True)
     u_ys =   tf(np.polymul(A, T), np.append(p_c, np.zeros(d+1)), dt=True)
+    u_ys =   tf(np.polymul(A, T), p_c, dt=True)
     #u_ys =   tf(np.append(np.polymul(A, T), np.zeros(d+2)), p_c,  dt=True)
     u_vy = - tf(np.polymul(A, R), p_c, dt=True)                         # Sensitivity function x Controller
     u_vu =   tf(np.polymul(A, S), p_c, dt=True)                           # Sensitivity function
@@ -240,7 +249,7 @@ def calculate_tf(d, A, B, R, S, T):
     return {y_ys, y_vy, y_vu, y_n}, {u_ys, u_vy, u_vu, u_n}
 
 #plt.figure("Comparison of properties")
-for i in range(0, 2):
+for i in range(0, 1):
     [R, S, T] = compute_RST(d, A, B, C, D, h_i[i], h_c[i], h_p[i], l[i])
     [y_tf, u_tf] = calculate_tf(d, A, B, R, S, T)
 
@@ -266,10 +275,10 @@ for i in range(0, 2):
         plt.title("Step response Y/Y* and U/U*")
         plt.xlabel("Time")
         plt.ylabel("Amplitude")
-        [y_ys, t] = step(y_ys_tf, T=12)
-        [u_ys, t] = step(u_ys_tf, T=12)
-        plt.plot(t, y_ys)
-        plt.plot(t, u_ys)
+        [y_ys_step, t_step_y] = step(y_ys_tf, T=52)
+        [u_ys_step, t_step_u] = step(u_ys_tf, T=52)
+        plt.plot(t_step_y, y_ys_step, "r", t_step_u, u_ys_step, "b")
+        #plt.plot(t, u_ys)
         pass
     except:
         pass
