@@ -57,8 +57,8 @@ l(2) = 0.9; % not 0
 % l = 0
 h_c(3) = length(A) + length(D) - 2;
 h_i(3) = length(B) + d;
-h_p(3) = h_i(3) + h_c(3) + 1;
-l(3) = 0.9;
+h_p(3) = h_i(3) + h_c(3);
+l(3) = 0;
 
 % property 4 (Internal Model Control)
 % h_p -> inf (100+)
@@ -66,20 +66,30 @@ l(3) = 0.9;
 % h_i = plant_delay + 1
 % l = 0
 % D = 1 - q^-1
-h_p(4) = 100;
+h_p(4) = 10;
 h_i(4) = d + 1;
-h_c(4) = 100;
-l(4) = 1.5;
+h_c(4) = h_p(4) - h_i(4);
+l(4) = 0;
 
 N = 2;
 
 % N1 = start prediction
 % N2 = end prediction
 
-% h_i(1) = d+1;
-% h_p(1) = d+N+1;
-% h_c(1) = N+1;
-% l(1) = 0.8;
+ %h_i(1) = d+1;
+ %h_p(1) = d+N+1;
+ %h_c(1) = N+1;
+ %l(1) = 0.1;
+%
+ %h_i(2) = d+2;
+ %h_p(2) = d+N+1;
+ %h_c(2) = N;
+ %l(2) = 0.5;
+%
+ %h_i(3) = d+3;
+ %h_p(3) = d+N+1;
+ %h_c(3) = N-1;
+ %l(3) = 0.9;
 
 for i = 1:4
 
@@ -178,28 +188,24 @@ for i = 1:4
     p_c = p_c1 + p_c2;
     
     
-    y_ys = tf(conv(B, T), [p_c, zeros(1, d+1)], -1);
+    y_ys = tf(conv(B, T), [p_c, zeros(1, d)], -1);
     y_vy = tf(conv(A, S), p_c, -1);                               % Sensitivity function
-    y_vu = tf([conv(B, S), zeros(1, d+1)], p_c, -1);     % Sensitivity function x System
-    %y_n  = tf(S, p_c, -1);     % Complementary sensitivity function
-    y_n  = tf([conv(B, R), zeros(1, d+1)], p_c, -1);     % Complementary sensitivity function
+    y_vu = tf(conv(B, S), [p_c, zeros(1, d+1)], -1);     % Sensitivity function x System
+    y_n  = tf(conv(B, R), [p_c, zeros(1, d+1)], -1);     % Complementary sensitivity function
     
     u_ys =   tf(conv(A, T), p_c, -1);
     u_vy = - tf(conv(A, R), p_c, -1);                         % Sensitivity function x Controller
-    % ? u_vy = - tf(conv(A, R), p_c, -1);                         % Sensitivity function x Controller
-    u_vu =   tf(conv(B, S), p_c, -1);                           % Sensitivity function
-    % ? u_vu =   tf(conv(A, S), p_c, -1);                           % Sensitivity function
+    u_vu =   tf(conv(B, R), [p_c, zeros(1, d+1)], -1);                           % Sensitivity function
     u_n  = - tf(conv(A, R), p_c, -1);                         % Sensitivity function x Controller
-    % ? u_n  = - tf(conv(A, R), p_c, -1);                         % Sensitivity function x Controller
     
     subplot(4,5, i+1);
     pzmap(y_ys);
     title("Poles and Zeros Y/Y*");
     
     subplot(4,5, i+1 +5);
-    step(y_ys, 12);
+    step(y_ys, 50);
     hold on;
-    step(u_ys, 12);
+    step(u_ys, 50);
     grid on;
     title("Step response Y/Y* and U/Y*");
     xlabel("Time");
@@ -212,7 +218,6 @@ for i = 1:4
     
     
     
-    waitforbuttonpress;
     
 
 
