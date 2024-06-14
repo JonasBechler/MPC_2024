@@ -3,13 +3,13 @@ clear;
 clc;
 close all;
 
-plant = 1;
+plant = 2;
 
 if plant == 1
     % Main Plant for Task
     d = 1; % plant delay
     B = [0.0281, 0.1278, 0.0513, 0.0013];
-    A = [1, -1.2254, 0.5711, -0.3507, 0.005];
+    A = [1, -1.2254, 0.5711, -0.3507, 0.05];
     C = [1 -0.9];
     D = [1, -1];
 
@@ -29,7 +29,7 @@ o_b = length(B) - 1;
 
 figure();
 subplot(4, 5, 1);
-plant_tf = tf(B, [A, zeros(1, d+1)], -1);
+plant_tf = tf(B, A, -1, 'Variable', 'z^-1', 'InputDelay', d);
 pzmap(plant_tf);
 title("Plant Poles and Zeros");
 
@@ -52,13 +52,13 @@ o_d = length(D) - 1;
 
 
 test_delay = false;
-test_hc = true;
+test_hc = false;
 
 for i = 1:4
     
     if test_delay
         d = i-1;
-        N = 5;
+        N = 500;
         hi = d + 1;
         hp = d + N + 1;
         hc = N + 1;
@@ -66,7 +66,7 @@ for i = 1:4
 
     elseif test_hc
         d = 0;
-        N = i*i*i
+        N = i
         hi = d + 1;
         hp = d + N + 1;
         hc = N+1;
@@ -74,25 +74,23 @@ for i = 1:4
 
 
     else
-        
-        
         if i == 1
             % property 1 (Minimal Variance Control)
             % h_p = h_i = plant_delay + 1
             % h_c = 1
             % l = 0
-            hp = d + 1;
-            hi = d + 1;
-            hc = 1;
-            lambda = 0.00;
+            hi = d+1;
+            hp = d+1+2;
+            hc = 1+2;
+            lambda = 0.80;
             
         elseif i == 2
             % property 2 (One step Ahead Predictive Control)
             % h_p = h_i = plant_delay + 1
             % h_c = 1
             % l != 0
-            hp = d + 1;
             hi = d + 1;
+            hp = d + 1;
             hc = 1;
             lambda = 0.8;
             
@@ -102,9 +100,9 @@ for i = 1:4
             % h_i = order(B) + plant_delay + 1
             % h_p > h_i + h_c
             % l = 0
-            hc = o_a + o_d;
             hi = o_b + d + 1;
-            hp = hi + hc + 1;
+            hc = o_a + o_d;
+            hp = hi + hc+1
             lambda = 0.00;
             
         elseif i == 4
@@ -114,10 +112,10 @@ for i = 1:4
             % h_i = plant_delay + 1
             % l = 0
             % D = 1 - q^-1
-            hp = 10;
-            hc = d + 1;
             hi = d + 1;
-            lambda = 0.00;
+            hp = d + 1 + 50;
+            hc = 50;
+            lambda = 0.80;
         end
         
     end
@@ -145,15 +143,13 @@ for i = 1:4
 
         G_ges_flipped(j, 1:length(G)) = fliplr(G);
     end
-    
-    disp("E_ges:")
-    disp(E_ges)
-    disp("F_ges:")
-    disp(F_ges)
-    disp("G_ges:")
-    disp(G_ges)
-    disp("H_ges:")
-    disp(H_ges)
+
+
+    print_array("E_ges", E_ges)
+    print_array("F_ges", F_ges)
+    print_array("G_ges", G_ges)
+    print_array("H_ges", H_ges)
+
 
     % G_ges:
 
@@ -177,21 +173,12 @@ for i = 1:4
     
     psi = G_ges_flipped(hi:hp, 1:hc);
     
-    % ?????????????????
-    %for j = hi:hp
-    %    buf = G_ges(j, :);
-    %    buf = buf.
-    %    % psi(j-hp+1, min(j, hp):-1:1) = G_ges(j, max(1, j - hp + 1):j);
-    %end
-    
-    disp("psi:")
-    disp(psi)
+    print_matrix("psi", psi)
     
     gamma = (psi' * psi + lambda * eye(hc)) \ psi';
     gamma = gamma(1, :);
     
-    disp("gamma:")
-    disp(gamma)
+    print_array("gamma", gamma)
     
     
     % R * y + S * u = T * y_s
@@ -202,8 +189,8 @@ for i = 1:4
     for j = hp:hp
         R = R + gamma(j - hp + 1) * F_ges(j, :);
     end
-    disp("R:")
-    disp(R)
+    print_array("R", R)
+
     
     % S = D * { C + sum(j = [0, ..., h_c])(gamma_j * H_j-d) * q^-1}
     
@@ -222,77 +209,96 @@ for i = 1:4
     S = S1 + S2;
     S = conv(D, S);
     
-    disp("S:")
-    disp(S)
+    print_array("S", S)
     
     % T = C * sum(j = [0, ..., h_c])(gamma_j * q^-j)
     T = conv(C, gamma);
-    disp("T:")
-    disp(T)
+
+    print_array("T", T)
+
     
     
     
     % p_c = A * S + B * R * q^(-d-1)
     p_c1 = conv(A, S);
     p_c2 = [zeros(1, d+1), conv(B, R)];
-    disp("p_c1:")
-    disp(p_c1)
-    disp("p_c2:")
-    disp(p_c2)
+    print_array("p_c1", p_c1)
+    print_array("p_c2", p_c2)
+
     if length(p_c1) < length(p_c2)
         p_c1 = [p_c1, zeros(1, length(p_c2) - length(p_c1))];
     else
         p_c2 = [p_c2, zeros(1, length(p_c1) - length(p_c2))];
     end
     p_c = p_c1 + p_c2;
-    %p_c = p_c(1:find(p_c, 1, 'last'));
 
-    disp("p_c:")
-    disp(p_c)
+    print_array("p_c", p_c)
+
     
     % y_ys = B * T * q^(-d-1) / p_c
-    y_ys_n = [zeros(1, d+1), conv(B, T)];
-    y_ys_d = p_c;
-    if length(y_ys_n) < length(y_ys_d)
-        y_ys_n = [y_ys_n, zeros(1, length(y_ys_d) - length(y_ys_n))];
-    else
-        y_ys_d = [y_ys_d, zeros(1, length(y_ys_n) - length(y_ys_d))];
-    end
-    disp("y_ys:")
-    disp(y_ys_n)
-    disp(y_ys_d)
-    y_ys = tf(y_ys_n, y_ys_d, -1);
+    y_ys =  tf(conv(B, T), p_c, -1, 'InputDelay', d, 'Variable', 'z^-1');
+
+    % y_vy = A * S / p_c
+    y_vy =  tf(conv(A, S), p_c, -1, 'Variable', 'z^-1');     
+    
+    % y_vu = B * S * q^(-d-1) / p_c
+    % Sensitivity function x System?
+    y_vu =  tf(conv(B, S), p_c, -1, 'InputDelay', d, 'Variable', 'z^-1');     
+    
+    % y_n = B * R * q^(-d-1) / p_c
+    % Complementary sensitivity function?
+    y_n  =  tf(conv(B, R), p_c, -1, 'InputDelay', d, 'Variable', 'z^-1');     
+
 
     % u_ys = A * T / p_c
-    u_ys_n = conv(A, T);
-    u_ys_d = p_c;
-    if length(u_ys_n) < length(u_ys_d)
-        u_ys_n = [u_ys_n, zeros(1, length(u_ys_d) - length(u_ys_n))];
-    else
-        u_ys_d = [u_ys_d, zeros(1, length(u_ys_n) - length(u_ys_d))];
-    end
-    disp("u_ys:")
-    disp(u_ys_n)
-    disp(u_ys_d)
-    u_ys = tf(u_ys_n, u_ys_d, -1);
+    u_ys =  tf(conv(A, T), p_c, -1, 'Variable', 'z^-1');
 
+    % u_vy = - A * R / p_c
+    % Sensitivity function x Controller?
+    u_vy = -tf(conv(A, R), p_c, -1, 'Variable', 'z^-1');                      
 
-
-
-    AT = conv(A, T);
-    AS = conv(A, S);
-    BS = conv(B, S);
-    AR = conv(A, R);
-    BR = conv(B, R);
-
-    y_vy = tf(conv(A, S), p_c, -1);                               % Sensitivity function
-    y_vu = tf(conv(B, S), [p_c, zeros(1, d+1)], -1);     % Sensitivity function x System
-    y_n  = tf(conv(B, R), [p_c, zeros(1, d+1)], -1);     % Complementary sensitivity function
+    % u_vu = B * R / p_c
+    % u_vu = B * R * q^(-d-1) / p_c
+    % Sensitivity function?
+    u_vu =  tf(conv(B, R), p_c, -1, 'InputDelay', d, 'Variable', 'z^-1');           
     
-    %u_ys =   tf(conv(A, T), p_c, -1);
-    u_vy = - tf(conv(A, R), p_c, -1);                         % Sensitivity function x Controller
-    u_vu =   tf(conv(B, R), [p_c, zeros(1, d+1)], -1);                           % Sensitivity function
-    u_n  = - tf(conv(A, R), p_c, -1);                         % Sensitivity function x Controller
+    % u_n = - A * R / p_c
+    % Sensitivity function x Controller?
+    u_n  = -tf(conv(A, R), p_c, -1, 'Variable', 'z^-1');
+    
+    p_f = deconv(p_c, C);
+    if i == 1
+        % property 1 test
+        % p_f == 1/b0 * B
+        disp("p_f == 1/b0 * B")
+        disp(p_f)
+        disp(1 / B(1) * B)
+        
+        
+    elseif i == 2
+        % property 2 test
+        % no test for this property
+        
+    elseif i == 3
+        % property 3 test
+        % p_f == 1
+        % p_c == C
+        disp("p_f == 1")
+        disp(p_f)
+        disp(1)
+        disp("p_c == C")
+        disp(p_c)
+        disp(C)
+        
+    elseif i == 4
+        % property 4 test
+        % p_f == A
+        disp("p_f == A")
+        disp(p_f)
+        disp(A)
+
+    end
+    
     
     subplot(4,5, i+1);
     pzmap(y_ys);
@@ -304,11 +310,27 @@ for i = 1:4
     hold on;
     step(u_ys);
     grid on;
-    title("Step response Y/Y* and U/Y*");
-    xlabel("Time");
-    ylabel("Amplitude");
-    
-    
-    
-    
+    title("Step Response Y/Y* and U/U*");
+
 end
+
+
+
+function print_array(name, value)
+    if length(value) < 10
+        disp(name + ":");
+        disp(value);
+        return;
+    end
+end
+
+function print_matrix(name, value)
+    if length(value(1, :)) < 10
+        disp(name + ":");
+        disp(value);
+        return;
+    end
+end
+    
+    
+
